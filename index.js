@@ -45,24 +45,75 @@ app.get("/return", (req, res) => {
     console.log("Return data:", vnp_Params);
 
     const result = verifyReturnUrl(vnp_Params);
-    
-    // Tùy theo kết quả xác thực (thành công/thất bại) để xử lý logic
-    // Đối với URL Return, bạn có thể redirect về một deeplink app hoặc render ra trang HTML
-    if (result.isSuccess) {
-      res.send(`
-        <h1>Thanh toán thành công!</h1>
-        <p>Mã đơn hàng: ${result.data['vnp_TxnRef']}</p>
-        <p>Số tiền: ${result.data['vnp_Amount'] / 100} VNĐ</p>
-        <p>Ghi chú: ${result.data['vnp_OrderInfo']}</p>
-      `);
+
+    // Trả về một trang HTML đặc biệt:
+    // - App React Native sẽ detect URL thay đổi trong WebView và lấy kết quả
+    // - Người dùng thấy trang thành công/thất bại đẹp
+    const orderId = result.data["vnp_OrderInfo"] || "";
+    const isSuccess = result.isSuccess;
+    const amount = isSuccess ? parseInt(result.data["vnp_Amount"]) / 100 : 0;
+
+    // Nhúng kết quả vào URL để WebView có thể đọc
+    const resultUrl = `vnpay-result://${isSuccess ? "success" : "failed"}?orderId=${encodeURIComponent(orderId)}&amount=${amount}&message=${encodeURIComponent(result.message)}`;
+
+    if (isSuccess) {
+      res.send(`<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thanh toán thành công</title>
+  <style>
+    body { font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f0fff4; }
+    .icon { font-size: 80px; }
+    h1 { color: #2e7d32; }
+    p { color: #555; text-align: center; }
+    .amount { font-size: 28px; font-weight: bold; color: #2e7d32; }
+    .note { font-size: 12px; color: #999; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div class="icon">✅</div>
+  <h1>Thanh toán thành công!</h1>
+  <p class="amount">${amount.toLocaleString("vi-VN")}đ</p>
+  <p>Đơn hàng của bạn đã được thanh toán thành công.<br>App sẽ tự động cập nhật trong giây lát...</p>
+  <p class="note">Bạn có thể đóng cửa sổ này.</p>
+  <script>
+    // Redirect về custom scheme để React Native WebView bắt được
+    setTimeout(() => { window.location.href = "${resultUrl}"; }, 800);
+  </script>
+</body>
+</html>`);
     } else {
-      res.send(`
-        <h1 style="color: red;">${result.message}</h1>
-        <p>Mã đơn hàng: ${result.data['vnp_TxnRef'] || 'Không rõ'}</p>
-      `);
+      res.send(`<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thanh toán thất bại</title>
+  <style>
+    body { font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #fff5f5; }
+    .icon { font-size: 80px; }
+    h1 { color: #c62828; }
+    p { color: #555; text-align: center; }
+    .note { font-size: 12px; color: #999; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div class="icon">❌</div>
+  <h1>Thanh toán thất bại</h1>
+  <p>${result.message}</p>
+  <p>Vui lòng thử lại hoặc liên hệ hỗ trợ.</p>
+  <p class="note">App sẽ tự động quay lại trong giây lát...</p>
+  <script>
+    setTimeout(() => { window.location.href = "${resultUrl}"; }, 800);
+  </script>
+</body>
+</html>`);
     }
 
   } catch (error) {
+    console.error("Return error:", error);
     res.status(500).send("Lỗi xử lý kết quả thanh toán");
   }
 });
