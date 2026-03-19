@@ -1,9 +1,18 @@
 require("dotenv").config();
 const express = require("express");
-const { createPaymentUrl, verifyReturnUrl } = require("./vnpay");
+const { createPaymentUrl, verifyReturnUrl, createRefundRequest } = require("./vnpay");
 
 const app = express();
 app.use(express.json());
+
+// Cho phép CORS để Admin Panel gọi được
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  if (req.method === "OPTIONS") return res.sendStatus(200);
+  next();
+});
 
 app.post("/create-payment", (req, res) => {
   try {
@@ -115,6 +124,57 @@ app.get("/return", (req, res) => {
   } catch (error) {
     console.error("Return error:", error);
     res.status(500).send("Lỗi xử lý kết quả thanh toán");
+  }
+});
+
+// -------------------------
+// POST /refund
+// Body: { txnRef, amount, transactionDate, transactionNo, orderInfo, createBy }
+// Gọi VNPay Refund API để hoàn tiền cọc cho khách
+// -------------------------
+app.post("/refund", async (req, res) => {
+  try {
+    let ipAddr =
+      req.headers["x-forwarded-for"] || req.socket.remoteAddress || "127.0.0.1";
+    if (ipAddr === "::1" || ipAddr === "::ffff:127.0.0.1") ipAddr = "127.0.0.1";
+    if (ipAddr.includes(",")) ipAddr = ipAddr.split(",")[0].trim();
+
+    const { txnRef, amount, transactionDate, transactionNo, orderInfo, createBy } = req.body;
+
+    if (!txnRef || !amount || !transactionDate) {
+      return res.status(400).json({ success: false, error: "Thiếu thông tin giao dịch (txnRef, amount, transactionDate)" });
+    }
+
+    if (amount <= 0) {
+      return res.json({ success: true, message: "Số tiền hoàn bằng 0, bỏ qua", skipped: true });
+    }
+
+    console.log(`[Refund] Hoàn tiền ${amount}đ cho giao dịch ${txnRef}`);
+
+    const vnpResult = await createRefundRequest({
+      txnRef,
+      amount,
+      transactionDate: transactionDate || "",
+      transactionNo: transactionNo || "",
+      orderInfo: orderInfo || `Hoan tien coc don hang ${txnRef}`,
+      ipAddr,
+      createBy: createBy || "dealer",
+    });
+
+    console.log("[Refund] VNPay response:", vnpResult);
+
+    const isSuccess = vnpResult.vnp_ResponseCode === "00";
+
+    res.json({
+      success: isSuccess,
+      vnpResponseCode: vnpResult.vnp_ResponseCode,
+      vnpMessage: vnpResult.vnp_Message || "",
+      vnpTransactionNo: vnpResult.vnp_TransactionNo || "",
+      raw: vnpResult,
+    });
+  } catch (err) {
+    console.error("[Refund] Error:", err);
+    res.status(500).json({ success: false, error: "Lỗi server khi hoàn tiền" });
   }
 });
 
