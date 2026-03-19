@@ -114,6 +114,7 @@ async function createRefundRequest({
   amount,
   transactionDate,
   transactionNo,
+  transactionType = "02", // "02" = hoàn toàn phần, "03" = hoàn một phần
   orderInfo,
   ipAddr,
   createBy,
@@ -130,7 +131,7 @@ async function createRefundRequest({
     "2.1.0",
     "refund",
     tmnCode,
-    "02", // vnp_TransactionType: hoàn toàn phần
+    transactionType, // "02" hoàn toàn phần / "03" hoàn một phần
     txnRef,
     (amount * 100).toString(),
     transactionNo,
@@ -149,7 +150,7 @@ async function createRefundRequest({
     vnp_Version: "2.1.0",
     vnp_Command: "refund",
     vnp_TmnCode: tmnCode,
-    vnp_TransactionType: "02",
+    vnp_TransactionType: transactionType,
     vnp_TxnRef: txnRef,
     vnp_Amount: amount * 100,
     vnp_OrderInfo: orderInfo,
