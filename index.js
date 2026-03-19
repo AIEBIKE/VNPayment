@@ -139,7 +139,7 @@ app.post("/refund", async (req, res) => {
     if (ipAddr === "::1" || ipAddr === "::ffff:127.0.0.1") ipAddr = "127.0.0.1";
     if (ipAddr.includes(",")) ipAddr = ipAddr.split(",")[0].trim();
 
-    const { txnRef, amount, transactionDate, transactionNo, orderInfo, createBy } = req.body;
+    const { txnRef, amount, transactionDate, transactionNo, orderInfo, createBy, transactionType, depositTotal } = req.body;
 
     if (!txnRef || !amount || !transactionDate) {
       return res.status(400).json({ success: false, error: "Thiếu thông tin giao dịch (txnRef, amount, transactionDate)" });
@@ -149,13 +149,23 @@ app.post("/refund", async (req, res) => {
       return res.json({ success: true, message: "Số tiền hoàn bằng 0, bỏ qua", skipped: true });
     }
 
-    console.log(`[Refund] Hoàn tiền ${amount}đ cho giao dịch ${txnRef}`);
+    // Tự động xác định type nếu không truyền vào:
+    // "02" = hoàn toàn phần (tiền hoàn = tiền cọc gốc)
+    // "03" = hoàn một phần  (tiền hoàn < tiền cọc gốc)
+    let resolvedType = transactionType;
+    if (!resolvedType) {
+      const isFullRefund = !depositTotal || amount >= depositTotal;
+      resolvedType = isFullRefund ? "02" : "03";
+    }
+
+    console.log(`[Refund] Hoàn tiền ${amount}đ (type=${resolvedType}) cho giao dịch ${txnRef}`);
 
     const vnpResult = await createRefundRequest({
       txnRef,
       amount,
       transactionDate: transactionDate || "",
       transactionNo: transactionNo || "",
+      transactionType: resolvedType,
       orderInfo: orderInfo || `Hoan tien coc don hang ${txnRef}`,
       ipAddr,
       createBy: createBy || "dealer",
